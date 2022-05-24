@@ -1,0 +1,17 @@
+{
+  "name": "proxy-redsalud",
+  "version": "1.0.0",
+  "main": "index.js",
+  "author": "Oscar",
+  "license": "MIT",
+  "dependencies": {
+    "cors-anywhere": "^0.4.4",
+    "express": "^4.18.1",
+    "express-http-proxy": "^1.6.3",
+    "http-proxy-middleware": "^2.0.6",
+    "morgan": "^1.10.0"
+  },
+  "scripts": {
+    "start": "node index.js"
+  }
+}

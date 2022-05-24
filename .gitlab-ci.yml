@@ -1,0 +1,164 @@
+stages:
+  - install
+  # - test
+  - dockerize
+  - deploy
+  - notify
+
+variables:
+  name: 'tools/proxy'
+  path: '/services/local-push-notifications'
+  namespace: 'prod-services'
+  chart_version: 0.3.1
+  node_version: 'node:16-alpine'
+  docker_image_name: 'docker.zeroq.cl/${name}'
+  release_name: '${name}-release'
+  port: '3030'
+
+.k8s:
+  image: dtzar/helm-kubectl
+  stage: deploy
+
+.dockrizr:
+  image: docker:stable
+  services:
+    - docker:dind
+  cache:
+    untracked: true
+    key: $CI_COMMIT_REF_SLUG-$CI_PROJECT_DIR
+    paths:
+      - node_modules/
+    policy: pull
+  stage: dockerize
+
+install:
+  image: ${node_version}
+  stage: install
+  cache:
+    untracked: true
+    key: $CI_COMMIT_REF_SLUG-$CI_PROJECT_DIR
+    paths:
+      - node_modules/
+      - .yarn/
+  script:
+    - yarn install --production=false
+    - yarn run build
+  artifacts:
+    paths:
+      - build
+
+# test:
+#   image: ${node_version}
+#   stage: test
+#   cache:
+#     untracked: true
+#     key: $CI_COMMIT_REF_SLUG-$CI_PROJECT_DIR
+#     paths:
+#       - node_modules/
+#     policy: pull
+#   script:
+#     - yarn run test
+#   only:
+#     - tag
+
+dockerize_staging:
+  extends: .dockrizr
+  script:
+    - sed -i "s#___NODE___#${node_version}#" Dockerfile
+    - docker build --build-arg port=${port} -t ${docker_image_name}:${CI_COMMIT_SHORT_SHA} .
+    - docker push ${docker_image_name}:${CI_COMMIT_SHORT_SHA}
+  only:
+    - develop
+
+deploy_staging:
+  extends: .k8s
+  stage: deploy
+  script:
+    - |
+      helm upgrade \
+        --install \
+        --repo https://zeroq.cl/helm-charts \
+        --set image=${docker_image_name} \
+        --set path=${path} \
+        --set port=${port} \
+        --set host=staging.zeroq.cl \
+        --set tag=${CI_COMMIT_SHORT_SHA} \
+        --set name=${name} \
+        --set namespace=staging \
+        --set env.BEAMS_INSTANCE_ID=${BEAMS_INSTANCE_ID} \
+        --set env.SECRET_KEY_BEAMS=${SECRET_KEY_BEAMS} \
+        --set env.AUTH_SECRET=${AUTH_SECRET} \
+        --namespace=staging \
+        --kubeconfig=kubeconfig \
+        --version=${chart_version} \
+        ${release_name}-staging zeroqchart
+  only:
+    - develop
+
+dockerize_production:
+  extends: .dockrizr
+  script:
+    - sed -i "s#___NODE___#${node_version}#" Dockerfile
+    - docker build --build-arg port=${port} -t ${docker_image_name}:${CI_COMMIT_TAG} .
+    - docker push ${docker_image_name}:${CI_COMMIT_TAG}
+  only:
+    - tags
+
+deploy_production:
+  extends: .k8s
+  stage: deploy
+  script:
+    - |
+      helm upgrade \
+        --install \
+        --repo https://zeroq.cl/helm-charts \
+        --set image=${docker_image_name} \
+        --set path=${path} \
+        --set host=zeroq.cl \
+        --set tag=${CI_COMMIT_TAG} \
+        --set name=${name} \
+        --set namespace=${namespace} \
+        --set env.BEAMS_INSTANCE_ID=${BEAMS_INSTANCE_ID} \
+        --set env.SECRET_KEY_BEAMS=${SECRET_KEY_BEAMS} \
+        --set env.AUTH_SECRET=${AUTH_SECRET} \
+        --namespace=${namespace} \
+        --kubeconfig=kubeconfig \
+        --version=${chart_version} \
+        ${release_name} zeroqchart
+  only:
+    - tags
+
+notify_discord:
+  image: curlimages/curl:7.75.0
+  stage: notify
+  script:
+    - |
+      DISCORD_JSON=$(cat << JSON
+      {
+        "username": "Mr. GitLab CI",
+        "avatar_url": "https://avatars.sched.co/a/84/5436165/avatar.jpg?2b2",
+        "content": "Hola, ZeroQ. Compilé una nueva versión de %s",
+        "embeds": [
+          {
+            "title": "Changelog",
+            "color": "3355545",
+            "fields": [
+              {
+                "name": "Versión",
+                "value": "%s",
+                "inline": false
+              }
+            ]
+          }
+        ]
+      }
+      JSON
+      )
+    - PAYLOAD=$(printf "${DISCORD_JSON}" ${name} ${CI_COMMIT_SHORT_SHA})
+    - |
+      curl \
+       -H "Accept: application/json" \
+       -H "Content-Type:application/json" \
+       -X POST --data "${PAYLOAD}" ${DISCORD_WEBHOOK}
+  only:
+    - develop
