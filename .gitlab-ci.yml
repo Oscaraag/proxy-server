@@ -84,10 +84,8 @@ deploy_staging:
         --set host=staging.zeroq.cl \
         --set tag=${CI_COMMIT_SHORT_SHA} \
         --set name=${name} \
-        --set namespace=staging \
-        --set env.BEAMS_INSTANCE_ID=${BEAMS_INSTANCE_ID} \
-        --set env.SECRET_KEY_BEAMS=${SECRET_KEY_BEAMS} \
-        --set env.AUTH_SECRET=${AUTH_SECRET} \
+        --set namespace=staging \  
+        --set env.HOST=staging.zeroq.cl \
         --namespace=staging \
         --kubeconfig=kubeconfig \
         --version=${chart_version} \
