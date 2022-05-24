@@ -42,7 +42,7 @@ install:
       - .yarn/
   script:
     - yarn install --production=false
-    - yarn run build
+    # - yarn run build
   artifacts:
     paths:
       - build
