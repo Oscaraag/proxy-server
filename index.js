@@ -1,7 +1,7 @@
 const { createServer } = require('cors-anywhere')
 
 const host = process.env.HOST || '0.0.0.0'
-const path = process.env.path
+const path = process.env.path || ''
 const port = process.env.PORT || 8080
 
 createServer({
